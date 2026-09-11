@@ -1,5 +1,6 @@
 {
   "name": "sonos-controller-unofficial",
+  "productName": "Sonos Controller",
   "version": "0.4.0-rc1",
   "description": "Unoffical sonos controller for linux",
   "main": "app/main.js",
@@ -9,9 +10,10 @@
     "clean": "rm -Rf dist && find app/ | grep -v node_modules | grep -e \"\\.\\(map\\|js\\)$\" | xargs -n1 rm",
     "pack": "electron-builder --dir",
     "dist": "electron-builder",
+    "dist:deb": "electron-builder --linux deb --x64",
     "build_help": "electron-builder --help",
     "build": "npm run lint && npm run test && npm run fonts && npm run transpile",
-    "develop": "export NODE_ENV=development npm run fonts && npm run transpile:dev && npm run start & npm run watch:dev",
+    "develop": "export NODE_ENV=development && npm run fonts && npm run transpile:dev && npm run start & npm run watch:dev",
     "start": "export NODE_ENV=development && electron .",
     "watch": "webpack -w --config=webpack.config.js",
     "transpile": "webpack --mode development --config=webpack.config.js",
@@ -72,6 +74,12 @@
     "linux": {
       "category": "Audio",
       "target": [
+        {
+          "target": "deb",
+          "arch": [
+            "x64"
+          ]
+        },
         {
           "target": "appImage",
           "arch": [
