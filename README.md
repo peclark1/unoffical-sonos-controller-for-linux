@@ -1,127 +1,215 @@
-[![No Maintenance Intended](http://unmaintained.tech/badge.svg)](http://unmaintained.tech/)
-
-This project is deprecated. I do not intend to do any more work on it.
-
-[![Build Status](https://github.com/pascalopitz/unoffical-sonos-controller-for-linux/workflows/Build/release/badge.svg)](https://github.com/pascalopitz/unoffical-sonos-controller-for-linux/actions?query=workflow%3ABuild%2Frelease)
-
 # Unofficial Sonos Controller for Linux
 
-First I was tinkering with Chrome apps and sonos. I released this as a
-Chrome app.
-Subsequently Chrome apps turned out to be
-a dying platform, so I've moved over to Electron. The project is written
-in mostly ES6 and utilizes React and Redux to manage the UI
+A desktop Sonos controller for Linux built with Electron, React, and Redux.
 
-![](http://pascalopitz.github.io/unoffical-sonos-controller-for-linux/screenshots/screenshot_1.png?raw=true)
+> **Maintenance fork**
+>
+> This repository is a maintenance fork of Pascal Opitz's original
+> [`unoffical-sonos-controller-for-linux`](https://github.com/pascalopitz/unoffical-sonos-controller-for-linux) project.
+> The upstream project is deprecated and no longer maintained. This fork keeps the
+> current code usable on modern Ubuntu systems and adds a small number of targeted
+> packaging and maintenance improvements while preserving the original project history.
 
-## Why?
+The current baseline is upstream **0.4.0-rc1**, using **Electron 31**.
 
-I use Ubuntu as my main OS, and there's no decent controller app.
-So I am aiming to at some point provide a usable sonos controller that
-can run on Linux also, installed via deb file. Maybe it won't have all
-the functions of the real sonos player, but if I can browse the library, Spotify
-and manage the queue, I'll be pretty damn happy.
+![Unofficial Sonos Controller screenshot](http://pascalopitz.github.io/unoffical-sonos-controller-for-linux/screenshots/screenshot_1.png?raw=true)
 
-## Install via .AppImage file
+## What has changed in this fork?
 
-Find the latest .AppImage on the [release page](https://github.com/pascalopitz/unoffical-sonos-controller-for-linux/releases).
-You can right click it on Ubuntu, then under "Permissions" mark is as executable. Alternatively run:
+The initial maintenance work in this fork focuses on making the application practical
+on current Ubuntu systems:
 
-```bash
-chmod +x sonos-controller-unofficial-amd64-0.4.0-rc1.AppImage
-```
+- Restored native **Debian (`.deb`) packaging** for x86-64 Ubuntu systems.
+- Added `npm run dist:deb` for building the Ubuntu package directly.
+- Uses the friendlier application name **Sonos Controller** in desktop menus.
+- Fixed the development command so `NODE_ENV=development` is set correctly.
+- Verified the Electron 31 build and packaged `.deb` on Ubuntu, including native file dialogs.
 
-After that it can be launched by double click or via invoking it through the terminal.
+The local-music HTTP server and the old **On this Device / Set local music folder**
+feature were removed upstream in 0.4.0-rc1 and are intentionally not restored here.
 
-To create a `.desktop` entry in Ubuntu, add it under something like `~/.local/share/applications/unoffical-sonos-controller-for-linux.desktop`
-with the following content, of course referencing the right file)= location and version:
+## Features
 
-```
-#!/usr/bin/env xdg-open
-[Desktop Entry]
-Terminal=false
-Type=Application
-Categories=Audio;
-Name=sonos-controller-unofficial
-Icon=appimagekit-sonos-controller-unofficial
-Exec="/home/username/Downloads/sonos-controller-unofficial-0.4.0-rc1.AppImage" %U
-```
+The application can discover and control Sonos devices on the local network, including
+common tasks such as browsing available music sources, playback control, volume control,
+queue management, grouping, and music-service access supported by the underlying Sonos
+libraries.
 
-##  and Run locally
+This is not an official Sonos application and is not affiliated with Sonos, Inc.
 
-You will need an installed and fairly recent version (>=13) of [nodejs](https://nodejs.org/) for this.
-Generating artefacts might require some additional binaries, like `graphicsMagick` and
-`icnsutils`, which you can install via `apt`.
+## Recommended Ubuntu install: build a `.deb`
 
+For this fork, the preferred installation method is a normal Debian package. A `.deb`
+installs the application under `/opt`, creates the desktop launcher and icons, and can be
+removed later through the normal Ubuntu package tools.
 
-Clone the git repository and `cd` into the project folder.
-Then initialize the project by running:
+### 1. Clone the repository
 
 ```bash
-npm install
+git clone https://github.com/peclark1/unoffical-sonos-controller-for-linux.git
+cd unoffical-sonos-controller-for-linux
 ```
 
-Start the electron app in develop mode:
+### 2. Install build dependencies
+
+A reasonably current Node.js installation is required. The project currently builds with
+Node.js 20.
+
+This project has separate build-time and application dependency trees. The following
+sequence is known to work with the current codebase:
+
+```bash
+npm install --include=dev --ignore-scripts --no-audit --no-fund
+
+cd app
+npm ci --legacy-peer-deps --no-audit --no-fund
+cd ..
+
+npm rebuild electron
+```
+
+`--legacy-peer-deps` is currently needed because a few older React components declare
+peer dependency ranges that predate React 18 even though the application is using React 18.
+
+### 3. Build the application
+
+```bash
+npm run transpile:dev
+```
+
+### 4. Build the Ubuntu package
+
+```bash
+npm run dist:deb
+```
+
+The resulting package will be written to `dist/`, for example:
+
+```text
+sonos-controller-unofficial_0.4.0-rc1_amd64.deb
+```
+
+### 5. Install it
+
+```bash
+sudo apt install ./dist/*.deb
+```
+
+After installation, search for **Sonos Controller** in the Ubuntu application menu and
+optionally pin it to the dock.
+
+To remove the package later:
+
+```bash
+sudo apt remove sonos-controller-unofficial
+```
+
+## Running from source
+
+After installing the dependencies above and transpiling the application, run:
+
+```bash
+npm run start
+```
+
+For active development, the repository also provides:
 
 ```bash
 npm run develop
 ```
 
-Building the packaged artefacts:
+### Chromium sandbox troubleshooting
+
+On some Ubuntu systems, a locally downloaded Electron runtime may report that
+`chrome-sandbox` is not configured correctly. If that happens when running from source,
+verify the error first, then the standard Chromium SUID sandbox permissions can be set with:
+
+```bash
+sudo chown root:root node_modules/electron/dist/chrome-sandbox
+sudo chmod 4755 node_modules/electron/dist/chrome-sandbox
+```
+
+This is not normally required for the installed `.deb` package.
+
+## AppImage
+
+The upstream 0.4.0-rc1 codebase also supports AppImage packaging. The existing AppImage
+configuration is retained in this fork.
+
+To build the configured distributable targets:
 
 ```bash
 npm run dist
 ```
 
+For historical upstream binaries, see the
+[original project's releases](https://github.com/pascalopitz/unoffical-sonos-controller-for-linux/releases).
+
 ## Firewall settings
 
-You will need to whitelist these if you run Ubuntu firewall for example:
+Sonos discovery and control use the local network. If a firewall is enabled, the original
+project documented the following traffic requirements:
 
 - TCP 1400 outgoing
 - TCP 4000 incoming
 - UDP 1900 outgoing
 - UDP 1905 incoming
-- TCP 13453 outgoing (for local file server)
+
+The old TCP 13453 local-file-server rule is no longer required because the local music
+server was removed in upstream 0.4.0-rc1.
 
 ## Troubleshooting
 
-### Q: The app keeps searching for my Sonos system
+### The app keeps searching for my Sonos system
 
-[Device discovery](https://github.com/bencevans/node-sonos/blob/master/lib/deviceDiscovery.js#L25) utilizes the [Simple Service Discovery Protocol](https://en.wikipedia.org/wiki/Simple_Service_Discovery_Protocol) over IPv4 and relies on multicast IP addresses and UDP messages.
+Device discovery uses SSDP over IPv4 and relies on multicast/UDP traffic. Check that the
+firewall rules above are not blocking discovery.
 
-Make sure you check the Firewall settings above are applied correctly.
+If discovery still fails and you know the IP address of one Sonos device, the application
+also provides **Developer -> Add IP manually**.
 
-If all ports are open and search still doesn not work, but you know the IP address of one of the devices, you can add an IP manually by using the developer menu option.
+### Exporting settings or app state
 
+The **Developer** menu includes options for exporting/importing settings and saving the
+current application state. These files can be useful when troubleshooting.
 
-## Contributions
+## Development and contributions
 
-Feel free to fork and create pull requests. Any help with the variety of music services would be most welcome.
+Issues for this maintenance fork can be filed here:
 
-## Issues
+https://github.com/peclark1/unoffical-sonos-controller-for-linux/issues
 
-For any issues, please submit them on the [issues page](https://github.com/pascalopitz/unoffical-sonos-controller-for-linux/issues).
+Small, focused fixes that keep the application useful on current Linux systems are welcome.
+The original upstream repository remains available for project history and attribution.
 
-Before you do, make sure you check the Firewall settings above are applied correctly.
+## Project history
 
-To provide more context please take the time and attach a copy of your current app state. You can do this by using the "Save app state to file" option in the Developer menu.
+Pascal Opitz originally developed this application after experimenting with a Chrome app
+for Sonos. As Chrome apps declined, the project moved to Electron and evolved into the
+React/Redux desktop application in this repository.
 
+The upstream project was later deprecated. Version 0.4.0-rc1 upgraded Electron and other
+dependencies, removed the local music server, and switched upstream Linux publishing to
+AppImage-only. This fork starts from that version and restores practical Ubuntu `.deb`
+packaging.
 
 ## Thanks to other projects
 
-- Because this started out as chrome app, I originally ported nearly all of https://github.com/bencevans/node-sonos/
-  so that it worked in chrome, and made minor modifications.
-  Also made it into an ES6 code base where it was easy to do.
-  Then, for version 0.2 I have removed the ported/modified code and am now using node-sonos vanilla.
+From the original project:
 
-- The web interface markup and css is adapted from https://github.com/jishi/node-sonos-web-controller/
+- The project originally ported substantial functionality from
+  [bencevans/node-sonos](https://github.com/bencevans/node-sonos/) and later switched to
+  using node-sonos directly.
+- The web-interface markup and CSS were adapted from
+  [jishi/node-sonos-web-controller](https://github.com/jishi/node-sonos-web-controller/).
+- [SoCo](https://github.com/SoCo) provided useful references for Sonos behavior and special cases.
+- [gotwalt/sonos](https://github.com/gotwalt/sonos) provided useful implementation notes.
+- [svrooij/node-sonos-ts](https://github.com/svrooij/node-sonos-ts) demonstrates an interesting
+  XML-service-definition approach.
 
-- SoCo is a great codebase that helped a lot with special cases and references: https://github.com/SoCo
+Please refer to those projects' licenses where applicable.
 
-- Some comments on the ruby sonos project really helped: https://github.com/gotwalt/sonos
+## License and attribution
 
-- Node-sonos-ts has an interesting approach of auto-generating code from the Sonos XML service definitions: https://github.com/svrooij/node-sonos-ts
-
-Please refer to the above projects' licenses (MIT), where they apply.
-
-
+This fork preserves the original repository history, authorship, contributor information,
+and license. See [`LICENSE.md`](LICENSE.md) for the project license.
