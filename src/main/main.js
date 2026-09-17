@@ -39,6 +39,15 @@ function createWindow() {
 
     registerMenu();
 
+    // Keep the temporary volume diagnostics easy to collect from a packaged
+    // build without requiring DevTools. Only our tagged messages are mirrored
+    // to stdout, so normal renderer logging stays unchanged.
+    win.webContents.on('console-message', (event, level, message) => {
+        if (message.startsWith('[volume-debug]')) {
+            console.log(message);
+        }
+    });
+
     win.webContents.setUserAgent(
         // Thanks SoCo: https://github.com/SoCo/SoCo/blob/18ee1ec11bba8463c4536aa7c2a25f5c20a051a4/soco/music_services/music_service.py#L55
         `Linux UPnP/1.0 Sonos/36.4-41270 (ACR_:${deviceProviderName})`,
