@@ -5,6 +5,7 @@ import SonosService from '../services/SonosService';
 
 const playerVolumeStates = new Map();
 const groupVolumeStates = new Map();
+const RECONCILE_DELAY = 250;
 
 function reconcilePlayerVolume(host) {
     const sonos = SonosService.getDeviceByHost(host);
@@ -20,6 +21,34 @@ function reconcilePlayerVolume(host) {
 
 function reconcileGroupVolumes(hosts) {
     hosts.forEach((host) => reconcilePlayerVolume(host));
+}
+
+function schedulePlayerReconcile(host, state) {
+    if (state.reconcileTimer) {
+        clearTimeout(state.reconcileTimer);
+    }
+
+    state.reconcileTimer = setTimeout(() => {
+        state.reconcileTimer = null;
+
+        if (!state.sending && state.pending === null) {
+            reconcilePlayerVolume(host);
+        }
+    }, RECONCILE_DELAY);
+}
+
+function scheduleGroupReconcile(state) {
+    if (state.reconcileTimer) {
+        clearTimeout(state.reconcileTimer);
+    }
+
+    state.reconcileTimer = setTimeout(() => {
+        state.reconcileTimer = null;
+
+        if (!state.sending && state.pending === null) {
+            reconcileGroupVolumes(state.hosts);
+        }
+    }, RECONCILE_DELAY);
 }
 
 async function drainPlayerVolume(host, state) {
@@ -47,7 +76,7 @@ async function drainPlayerVolume(host, state) {
         return;
     }
 
-    reconcilePlayerVolume(host);
+    schedulePlayerReconcile(host, state);
 }
 
 function queuePlayerVolume(host, volume) {
@@ -64,10 +93,16 @@ function queuePlayerVolume(host, volume) {
             sonos,
             sending: false,
             pending: null,
+            reconcileTimer: null,
         };
         playerVolumeStates.set(host, state);
     } else {
         state.sonos = sonos;
+    }
+
+    if (state.reconcileTimer) {
+        clearTimeout(state.reconcileTimer);
+        state.reconcileTimer = null;
     }
 
     state.pending = volume;
@@ -88,6 +123,7 @@ function createGroupVolumeState(host) {
         sending: false,
         pending: null,
         hosts: [],
+        reconcileTimer: null,
         ready: service.SnapshotGroupVolume().catch((err) => {
             console.error(err);
         }),
@@ -128,7 +164,7 @@ async function drainGroupVolume(host, state) {
         return;
     }
 
-    reconcileGroupVolumes(state.hosts);
+    scheduleGroupReconcile(state);
 }
 
 function queueGroupVolume(host, volume, hosts) {
@@ -142,6 +178,11 @@ function queueGroupVolume(host, volume, hosts) {
         }
 
         groupVolumeStates.set(host, state);
+    }
+
+    if (state.reconcileTimer) {
+        clearTimeout(state.reconcileTimer);
+        state.reconcileTimer = null;
     }
 
     state.hosts = hosts;
