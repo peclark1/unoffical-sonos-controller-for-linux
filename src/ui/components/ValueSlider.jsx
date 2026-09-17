@@ -7,6 +7,8 @@ class VolumeSlider extends Component {
 
         this._input = React.createRef();
         this._dragging = false;
+        this._pendingValue = null;
+        this._pendingTimer = null;
 
         this._onStart = this._onStart.bind(this);
         this._onStop = this._onStop.bind(this);
@@ -32,21 +34,47 @@ class VolumeSlider extends Component {
     }
 
     componentDidUpdate(prevProps) {
-        if (
-            !this._dragging &&
-            prevProps.value !== this.props.value &&
-            this._input.current
-        ) {
-            this._input.current.value = Number(this.props.value);
+        if (!this._input.current || this._dragging) {
+            return;
+        }
+
+        const nextValue = Number(this.props.value);
+
+        if (this._pendingValue !== null) {
+            const confirmed = Math.abs(nextValue - this._pendingValue) <= 1;
+
+            if (!confirmed) {
+                return;
+            }
+
+            this._clearPendingValue();
+        }
+
+        if (prevProps.value !== this.props.value) {
+            this._input.current.value = nextValue;
         }
     }
 
     componentWillUnmount() {
         this._setValueThrottled.cancel();
         this._onWheelThrottled.cancel();
+        this._clearPendingTimer();
+    }
+
+    _clearPendingTimer() {
+        if (this._pendingTimer) {
+            window.clearTimeout(this._pendingTimer);
+            this._pendingTimer = null;
+        }
+    }
+
+    _clearPendingValue() {
+        this._pendingValue = null;
+        this._clearPendingTimer();
     }
 
     _onStart() {
+        this._clearPendingValue();
         this._dragging = true;
 
         if (this.props.startHandler) {
@@ -56,6 +84,19 @@ class VolumeSlider extends Component {
 
     _onStop(e) {
         const value = Number(e.currentTarget.value);
+
+        // Keep the released thumb exactly where the user left it until the
+        // Sonos state catches up. This prevents older in-flight volume events
+        // from visually pulling the slider back after mouse-up.
+        this._pendingValue = value;
+        this._clearPendingTimer();
+        this._pendingTimer = window.setTimeout(() => {
+            this._pendingValue = null;
+
+            if (this._input.current && !this._dragging) {
+                this._input.current.value = Number(this.props.value);
+            }
+        }, 5000);
 
         // Make sure the final thumb position is always sent, even if it landed
         // between throttle intervals.
