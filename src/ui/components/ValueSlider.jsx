@@ -1,6 +1,12 @@
 import throttle from 'lodash/throttle';
 import React, { Component } from 'react';
 
+function volumeDebug(event, details = {}) {
+    console.log(
+        `[volume-debug] ${performance.now().toFixed(1)} ${event} ${JSON.stringify(details)}`,
+    );
+}
+
 class VolumeSlider extends Component {
     constructor(props) {
         super(props);
@@ -9,6 +15,8 @@ class VolumeSlider extends Component {
         this._dragging = false;
         this._pendingValue = null;
         this._pendingTimer = null;
+        this._inputCount = 0;
+        this._lastInputValue = null;
 
         this._onStart = this._onStart.bind(this);
         this._onStop = this._onStop.bind(this);
@@ -38,13 +46,15 @@ class VolumeSlider extends Component {
                 Number.isFinite(confirmedValue) &&
                 Math.abs(confirmedValue - this._pendingValue) <= 1;
 
-            // The optimistic Redux value is not confirmation. Keep the thumb
-            // pinned where the user released it until Sonos itself reports the
-            // requested value (or the failsafe timer below expires).
             if (!confirmed) {
                 return;
             }
 
+            volumeDebug('slider-confirmed', {
+                slider: this.props.debugName || 'volume',
+                requested: this._pendingValue,
+                confirmed: confirmedValue,
+            });
             this._clearPendingValue();
         }
 
@@ -76,16 +86,20 @@ class VolumeSlider extends Component {
     _onStart(e) {
         this._clearPendingValue();
         this._dragging = true;
+        this._inputCount = 0;
+        this._lastInputValue = Number(e.currentTarget.value);
 
-        // A fast drag can move the pointer off the narrow range input before
-        // the button is released. Capture the pointer so pointerup still comes
-        // back to this slider and the final Sonos volume is always submitted.
+        volumeDebug('pointer-down', {
+            slider: this.props.debugName || 'volume',
+            value: this._lastInputValue,
+            pointerId: e.pointerId,
+        });
+
         if (e.currentTarget.setPointerCapture) {
             try {
                 e.currentTarget.setPointerCapture(e.pointerId);
             } catch (err) {
-                // Pointer capture is only a robustness aid; native range
-                // dragging still works if the browser rejects the capture.
+                // Pointer capture is only a robustness aid.
             }
         }
 
@@ -96,6 +110,15 @@ class VolumeSlider extends Component {
 
     _onStop(e) {
         const value = Number(e.currentTarget.value);
+
+        volumeDebug('pointer-up', {
+            slider: this.props.debugName || 'volume',
+            value,
+            inputCount: this._inputCount,
+            lastInputValue: this._lastInputValue,
+            pointerId: e.pointerId,
+            eventType: e.type,
+        });
 
         if (
             e.currentTarget.releasePointerCapture &&
@@ -109,11 +132,15 @@ class VolumeSlider extends Component {
             }
         }
 
-        // Keep the released thumb exactly where the user left it until Sonos
-        // confirms the target. Older in-flight events must not pull it back.
         this._pendingValue = value;
         this._clearPendingTimer();
         this._pendingTimer = window.setTimeout(() => {
+            volumeDebug('slider-confirm-timeout', {
+                slider: this.props.debugName || 'volume',
+                requested: this._pendingValue,
+                value: Number(this.props.value),
+                confirmed: Number(this.props.confirmedValue),
+            });
             this._pendingValue = null;
 
             if (this._input.current && !this._dragging) {
@@ -123,9 +150,10 @@ class VolumeSlider extends Component {
 
         this._dragging = false;
 
-        // Do not send intermediate network commands while dragging. Send only
-        // the final released value so there is no Sonos command backlog to
-        // drain after pointer-up.
+        volumeDebug('submit-final-volume', {
+            slider: this.props.debugName || 'volume',
+            value,
+        });
         this._setValue(value);
 
         if (this.props.stopHandler) {
@@ -133,10 +161,10 @@ class VolumeSlider extends Component {
         }
     }
 
-    _onInput() {
-        // Chromium owns the range thumb while dragging, so the visual control
-        // follows the pointer immediately. The Sonos command is sent on release.
+    _onInput(e) {
         this._dragging = true;
+        this._inputCount += 1;
+        this._lastInputValue = Number(e.currentTarget.value);
     }
 
     _setValue(value) {
@@ -158,8 +186,6 @@ class VolumeSlider extends Component {
             Math.min(Number(input.max), Number(input.value) + direction),
         );
 
-        // Wheel changes are discrete, so keep sending them through a modest
-        // throttle while updating the DOM immediately.
         input.value = value;
         this._onWheelThrottled(value);
     }
