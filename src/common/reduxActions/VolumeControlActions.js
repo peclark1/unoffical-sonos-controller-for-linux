@@ -6,6 +6,22 @@ import SonosService from '../services/SonosService';
 const playerVolumeStates = new Map();
 const groupVolumeStates = new Map();
 
+function reconcilePlayerVolume(host) {
+    const sonos = SonosService.getDeviceByHost(host);
+
+    if (!sonos) {
+        return;
+    }
+
+    SonosService.queryVolumeInfo(sonos).catch((err) => {
+        console.error(err);
+    });
+}
+
+function reconcileGroupVolumes(hosts) {
+    hosts.forEach((host) => reconcilePlayerVolume(host));
+}
+
 async function drainPlayerVolume(host, state) {
     if (state.sending) {
         return;
@@ -28,7 +44,10 @@ async function drainPlayerVolume(host, state) {
 
     if (state.pending !== null) {
         drainPlayerVolume(host, state);
+        return;
     }
+
+    reconcilePlayerVolume(host);
 }
 
 function queuePlayerVolume(host, volume) {
@@ -68,6 +87,7 @@ function createGroupVolumeState(host) {
         service,
         sending: false,
         pending: null,
+        hosts: [],
         ready: service.SnapshotGroupVolume().catch((err) => {
             console.error(err);
         }),
@@ -105,10 +125,13 @@ async function drainGroupVolume(host, state) {
 
     if (state.pending !== null) {
         drainGroupVolume(host, state);
+        return;
     }
+
+    reconcileGroupVolumes(state.hosts);
 }
 
-function queueGroupVolume(host, volume) {
+function queueGroupVolume(host, volume, hosts) {
     let state = groupVolumeStates.get(host);
 
     if (!state) {
@@ -121,6 +144,7 @@ function queueGroupVolume(host, volume) {
         groupVolumeStates.set(host, state);
     }
 
+    state.hosts = hosts;
     state.pending = volume;
     drainGroupVolume(host, state);
 }
@@ -162,7 +186,8 @@ export const setGroupVolume = createAction(
     Constants.VOLUME_CONTROLS_GROUP_VOLUME_SET,
     (host, volume, volumes) => {
         const numericVolume = Number(volume);
-        queueGroupVolume(host, numericVolume);
+        const hosts = Object.keys(volumes || {});
+        queueGroupVolume(host, numericVolume, hosts);
 
         return {
             host,
