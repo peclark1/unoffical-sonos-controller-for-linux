@@ -4,7 +4,6 @@ import Constants from '../constants';
 import SonosService from '../services/SonosService';
 
 const playerVolumeStates = new Map();
-const groupVolumeStates = new Map();
 const RECONCILE_DELAY = 250;
 
 function reconcilePlayerVolume(host) {
@@ -33,20 +32,6 @@ function schedulePlayerReconcile(host, state) {
 
         if (!state.sending && state.pending === null) {
             reconcilePlayerVolume(host);
-        }
-    }, RECONCILE_DELAY);
-}
-
-function scheduleGroupReconcile(state) {
-    if (state.reconcileTimer) {
-        clearTimeout(state.reconcileTimer);
-    }
-
-    state.reconcileTimer = setTimeout(() => {
-        state.reconcileTimer = null;
-
-        if (!state.sending && state.pending === null) {
-            reconcileGroupVolumes(state.hosts);
         }
     }, RECONCILE_DELAY);
 }
@@ -109,85 +94,27 @@ function queuePlayerVolume(host, volume) {
     drainPlayerVolume(host, state);
 }
 
-function createGroupVolumeState(host) {
-    const sonos = SonosService.getDeviceByHost(host);
+async function sendGroupVolumes(volumes) {
+    const entries = Object.entries(volumes || {});
 
-    if (!sonos) {
-        return null;
-    }
+    await Promise.all(
+        entries.map(async ([host, volume]) => {
+            const sonos = SonosService.getDeviceByHost(host);
 
-    const service = sonos.groupRenderingControlService();
+            if (!sonos) {
+                return;
+            }
 
-    return {
-        service,
-        sending: false,
-        pending: null,
-        hosts: [],
-        reconcileTimer: null,
-        ready: service.SnapshotGroupVolume().catch((err) => {
-            console.error(err);
+            try {
+                await sonos.setVolume(Number(volume));
+            } catch (err) {
+                console.error(err);
+            }
         }),
-    };
-}
+    );
 
-function snapshotGroupVolume(host) {
-    const state = createGroupVolumeState(host);
-
-    if (state) {
-        groupVolumeStates.set(host, state);
-    }
-}
-
-async function drainGroupVolume(host, state) {
-    if (state.sending) {
-        return;
-    }
-
-    state.sending = true;
-    await state.ready;
-
-    while (state.pending !== null) {
-        const volume = state.pending;
-        state.pending = null;
-
-        try {
-            await state.service.SetGroupVolume(volume);
-        } catch (err) {
-            console.error(err);
-        }
-    }
-
-    state.sending = false;
-
-    if (state.pending !== null) {
-        drainGroupVolume(host, state);
-        return;
-    }
-
-    scheduleGroupReconcile(state);
-}
-
-function queueGroupVolume(host, volume, hosts) {
-    let state = groupVolumeStates.get(host);
-
-    if (!state) {
-        state = createGroupVolumeState(host);
-
-        if (!state) {
-            return;
-        }
-
-        groupVolumeStates.set(host, state);
-    }
-
-    if (state.reconcileTimer) {
-        clearTimeout(state.reconcileTimer);
-        state.reconcileTimer = null;
-    }
-
-    state.hosts = hosts;
-    state.pending = volume;
-    drainGroupVolume(host, state);
+    const hosts = entries.map(([host]) => host);
+    setTimeout(() => reconcileGroupVolumes(hosts), RECONCILE_DELAY);
 }
 
 export const setPlayerMuted = createAction(
@@ -215,20 +142,17 @@ export const setPlayerVolume = createAction(
     },
 );
 
-export const snapshotCurrentGroupVolume = createAction(
-    Constants.VOLUME_CONTROLS_GROUP_VOLUME_SNAPSHOT,
-    (host) => {
-        snapshotGroupVolume(host);
-        return { host };
-    },
-);
-
 export const setGroupVolume = createAction(
     Constants.VOLUME_CONTROLS_GROUP_VOLUME_SET,
     (host, volume, volumes) => {
         const numericVolume = Number(volume);
-        const hosts = Object.keys(volumes || {});
-        queueGroupVolume(host, numericVolume, hosts);
+
+        // The UI sends group volume only when the drag is released. Apply the
+        // final per-speaker values concurrently so release costs one network
+        // round-trip instead of SnapshotGroupVolume + queued SetGroupVolume calls.
+        sendGroupVolumes(volumes).catch((err) => {
+            console.error(err);
+        });
 
         return {
             host,
