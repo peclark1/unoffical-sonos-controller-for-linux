@@ -9,6 +9,12 @@ const initialState = {
     muted: {},
 };
 
+function volumeDebug(event, details = {}) {
+    console.log(
+        `[volume-debug] ${performance.now().toFixed(1)} ${event} ${JSON.stringify(details)}`,
+    );
+}
+
 export default handleActions(
     {
         [Constants.VOLUME_CONTROLS_VOLUME_SET]: (state, action) => {
@@ -70,9 +76,12 @@ export default handleActions(
                 [host]: volume,
             };
 
-            // Always remember what Sonos actually reported, even while a drag
-            // is active. Do not let those events move the optimistic UI until
-            // the drag finishes.
+            volumeDebug('sonos-volume-update', {
+                host,
+                volume: Number(volume),
+                dragging: state.dragging,
+            });
+
             if (state.dragging) {
                 return {
                     ...state,
@@ -98,6 +107,7 @@ export default handleActions(
         },
 
         [Constants.VOLUME_CONTROLS_DRAGGING]: (state, action) => {
+            volumeDebug('dragging-state', { dragging: action.payload });
             return {
                 ...state,
                 dragging: action.payload,
