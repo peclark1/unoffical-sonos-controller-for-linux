@@ -4,7 +4,9 @@ import React, { Component } from 'react';
 class VolumeSlider extends Component {
     constructor(props) {
         super(props);
-        this.state = { dragging: false };
+
+        this._input = React.createRef();
+        this._dragging = false;
 
         this._onStart = this._onStart.bind(this);
         this._onStop = this._onStop.bind(this);
@@ -20,9 +22,7 @@ class VolumeSlider extends Component {
             },
         );
         this._onWheelThrottled = throttle(
-            (direction) => {
-                this._setValue(this._getValue() + direction);
-            },
+            (value) => this._setValue(value),
             100,
             {
                 leading: true,
@@ -31,29 +31,37 @@ class VolumeSlider extends Component {
         );
     }
 
+    componentDidUpdate(prevProps) {
+        if (
+            !this._dragging &&
+            prevProps.value !== this.props.value &&
+            this._input.current
+        ) {
+            this._input.current.value = Number(this.props.value);
+        }
+    }
+
     componentWillUnmount() {
         this._setValueThrottled.cancel();
         this._onWheelThrottled.cancel();
     }
 
-    _onStart(e) {
-        this.setState({
-            dragging: true,
-            value: Number(e.target.value),
-        });
+    _onStart() {
+        this._dragging = true;
 
         if (this.props.startHandler) {
             this.props.startHandler();
         }
     }
 
-    _onStop() {
-        this._setValueThrottled.flush();
+    _onStop(e) {
+        const value = Number(e.currentTarget.value);
 
-        this.setState({
-            dragging: false,
-            value: null,
-        });
+        // Make sure the final thumb position is always sent, even if it landed
+        // between throttle intervals.
+        this._setValueThrottled(value);
+        this._setValueThrottled.flush();
+        this._dragging = false;
 
         if (this.props.stopHandler) {
             this.props.stopHandler();
@@ -61,14 +69,11 @@ class VolumeSlider extends Component {
     }
 
     _onInput(e) {
-        const value = Number(e.target.value);
-
-        this.setState({
-            dragging: true,
-            value,
-        });
-
-        this._setValueThrottled(value);
+        // Leave the range input uncontrolled while dragging. Chromium can then
+        // paint the thumb directly at pointer speed while Sonos updates happen
+        // independently on the throttled path below.
+        this._dragging = true;
+        this._setValueThrottled(Number(e.currentTarget.value));
     }
 
     _setValue(value) {
@@ -78,26 +83,33 @@ class VolumeSlider extends Component {
     }
 
     _onWheel(e) {
-        this._onWheelThrottled(e.deltaY > 0 ? -1 : 1);
-    }
+        const input = this._input.current;
 
-    _getValue() {
-        return this.state.dragging
-            ? this.state.value
-            : Number(this.props.value);
+        if (!input) {
+            return;
+        }
+
+        const direction = e.deltaY > 0 ? -1 : 1;
+        const value = Math.max(
+            Number(input.min),
+            Math.min(Number(input.max), Number(input.value) + direction),
+        );
+
+        // Wheel changes do not get the browser's native range-input movement,
+        // so update the DOM directly and let the Sonos command trail behind it.
+        input.value = value;
+        this._onWheelThrottled(value);
     }
 
     render() {
-        const value = this._getValue();
-
         return (
             <div className="value-bar">
                 <input
+                    ref={this._input}
                     type="range"
                     min="0"
                     max="100"
-                    value={Number(value)}
-                    onChange={() => {}}
+                    defaultValue={Number(this.props.value)}
                     onMouseDown={this._onStart}
                     onMouseUp={this._onStop}
                     onInput={this._onInput}
