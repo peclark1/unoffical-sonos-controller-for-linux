@@ -5,6 +5,7 @@ const initialState = {
     dragging: false,
     expanded: false,
     volume: {},
+    confirmedVolume: {},
     muted: {},
 };
 
@@ -64,15 +65,24 @@ export default handleActions(
 
         [Constants.SONOS_SERVICE_VOLUME_UPDATE]: (state, action) => {
             const { host, volume } = action.payload;
+            const confirmedVolume = {
+                ...state.confirmedVolume,
+                [host]: volume,
+            };
 
+            // Always remember what Sonos actually reported, even while a drag
+            // is active. Do not let those events move the optimistic UI until
+            // the drag finishes.
             if (state.dragging) {
                 return {
                     ...state,
+                    confirmedVolume,
                 };
             }
 
             return {
                 ...state,
+                confirmedVolume,
                 volume: {
                     ...state.volume,
                     [host]: volume,
