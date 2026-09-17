@@ -24,6 +24,7 @@ const mapStateToProps = (state) => {
         currentHost: state.sonosService.currentHost,
         groupVolume: getGroupVolume(state),
         groupMuted: getGroupMuted(state),
+        confirmedVolume: state.volume.confirmedVolume || {},
         dragging: state.volume.dragging,
         expanded: state.volume.expanded,
     };
@@ -102,6 +103,27 @@ class VolumeControls extends Component {
         }, {});
     }
 
+    _getConfirmedGroupVolume(keys, fallback) {
+        if (!keys.length) {
+            return Number(fallback);
+        }
+
+        const values = keys.map((key) => {
+            const confirmed = this.props.confirmedVolume[key];
+
+            if (confirmed !== undefined) {
+                return Number(confirmed);
+            }
+
+            const player = this.props.players[key];
+            return player ? Number(player.volume) : 0;
+        });
+
+        return Math.floor(
+            values.reduce((total, value) => total + value, 0) / values.length,
+        );
+    }
+
     _changeGroupVolume(volume) {
         const volumeLevel = Math.max(0, Math.min(99, Number(volume)));
         const keys = this.props.currentGroupKeys;
@@ -158,21 +180,35 @@ class VolumeControls extends Component {
     render() {
         let groupMuted = false;
         let groupVolume = 0;
+        let confirmedGroupVolume = 0;
         let playerPopover;
 
         const keys = this.props.currentGroupKeys;
 
         if (keys.length === 1) {
-            groupMuted = this.props.players[keys[0]].muted;
-            groupVolume = this.props.players[keys[0]].volume;
+            const key = keys[0];
+            groupMuted = this.props.players[key].muted;
+            groupVolume = this.props.players[key].volume;
+            confirmedGroupVolume =
+                this.props.confirmedVolume[key] !== undefined
+                    ? Number(this.props.confirmedVolume[key])
+                    : Number(groupVolume);
         } else {
             groupMuted = this.props.groupMuted;
             groupVolume = this.props.groupVolume;
+            confirmedGroupVolume = this._getConfirmedGroupVolume(
+                keys,
+                groupVolume,
+            );
         }
 
         if (this.props.expanded && keys.length > 1) {
             const playerRows = Object.keys(this.props.players).map((key) => {
                 const { volume, muted, name } = this.props.players[key];
+                const confirmedVolume =
+                    this.props.confirmedVolume[key] !== undefined
+                        ? Number(this.props.confirmedVolume[key])
+                        : Number(volume);
 
                 const startVolume = () => {
                     this._dragStart();
@@ -201,6 +237,7 @@ class VolumeControls extends Component {
 
                         <ValueSlider
                             value={volume}
+                            confirmedValue={confirmedVolume}
                             stopHandler={endVolume}
                             startHandler={startVolume}
                             dragHandler={changeVolume}
@@ -229,6 +266,7 @@ class VolumeControls extends Component {
 
                 <ValueSlider
                     value={groupVolume}
+                    confirmedValue={confirmedGroupVolume}
                     stopHandler={this._endGroupVolume.bind(this)}
                     startHandler={this._startGroupVolume.bind(this)}
                     dragHandler={this._changeGroupVolume.bind(this)}
