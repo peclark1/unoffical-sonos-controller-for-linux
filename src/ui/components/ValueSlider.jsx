@@ -15,14 +15,6 @@ class VolumeSlider extends Component {
         this._onInput = this._onInput.bind(this);
         this._onWheel = this._onWheel.bind(this);
 
-        this._setValueThrottled = throttle(
-            (value) => this._setValue(value),
-            100,
-            {
-                leading: true,
-                trailing: true,
-            },
-        );
         this._onWheelThrottled = throttle(
             (value) => this._setValue(value),
             100,
@@ -56,7 +48,6 @@ class VolumeSlider extends Component {
     }
 
     componentWillUnmount() {
-        this._setValueThrottled.cancel();
         this._onWheelThrottled.cancel();
         this._clearPendingTimer();
     }
@@ -86,8 +77,7 @@ class VolumeSlider extends Component {
         const value = Number(e.currentTarget.value);
 
         // Keep the released thumb exactly where the user left it until the
-        // Sonos state catches up. This prevents older in-flight volume events
-        // from visually pulling the slider back after mouse-up.
+        // Sonos state catches up. Older Sonos events must not pull it backward.
         this._pendingValue = value;
         this._clearPendingTimer();
         this._pendingTimer = window.setTimeout(() => {
@@ -98,23 +88,22 @@ class VolumeSlider extends Component {
             }
         }, 5000);
 
-        // Make sure the final thumb position is always sent, even if it landed
-        // between throttle intervals.
-        this._setValueThrottled(value);
-        this._setValueThrottled.flush();
         this._dragging = false;
 
+        // Do not send intermediate network commands while dragging. Send only
+        // the final released value so there is no Sonos command backlog to
+        // drain after mouse-up.
+        this._setValue(value);
+
         if (this.props.stopHandler) {
-            this.props.stopHandler();
+            this.props.stopHandler(value);
         }
     }
 
-    _onInput(e) {
-        // Leave the range input uncontrolled while dragging. Chromium can then
-        // paint the thumb directly at pointer speed while Sonos updates happen
-        // independently on the throttled path below.
+    _onInput() {
+        // Chromium owns the range thumb while dragging, so the visual control
+        // follows the pointer immediately. The Sonos command is sent on release.
         this._dragging = true;
-        this._setValueThrottled(Number(e.currentTarget.value));
     }
 
     _setValue(value) {
@@ -136,8 +125,8 @@ class VolumeSlider extends Component {
             Math.min(Number(input.max), Number(input.value) + direction),
         );
 
-        // Wheel changes do not get the browser's native range-input movement,
-        // so update the DOM directly and let the Sonos command trail behind it.
+        // Wheel changes are discrete, so keep sending them through a modest
+        // throttle while updating the DOM immediately.
         input.value = value;
         this._onWheelThrottled(value);
     }
