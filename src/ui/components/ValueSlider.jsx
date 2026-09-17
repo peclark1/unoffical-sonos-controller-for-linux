@@ -33,8 +33,14 @@ class VolumeSlider extends Component {
         const nextValue = Number(this.props.value);
 
         if (this._pendingValue !== null) {
-            const confirmed = Math.abs(nextValue - this._pendingValue) <= 1;
+            const confirmedValue = Number(this.props.confirmedValue);
+            const confirmed =
+                Number.isFinite(confirmedValue) &&
+                Math.abs(confirmedValue - this._pendingValue) <= 1;
 
+            // The optimistic Redux value is not confirmation. Keep the thumb
+            // pinned where the user released it until Sonos itself reports the
+            // requested value (or the failsafe timer below expires).
             if (!confirmed) {
                 return;
             }
@@ -42,7 +48,10 @@ class VolumeSlider extends Component {
             this._clearPendingValue();
         }
 
-        if (prevProps.value !== this.props.value) {
+        if (
+            prevProps.value !== this.props.value ||
+            prevProps.confirmedValue !== this.props.confirmedValue
+        ) {
             this._input.current.value = nextValue;
         }
     }
@@ -76,8 +85,8 @@ class VolumeSlider extends Component {
     _onStop(e) {
         const value = Number(e.currentTarget.value);
 
-        // Keep the released thumb exactly where the user left it until the
-        // Sonos state catches up. Older Sonos events must not pull it backward.
+        // Keep the released thumb exactly where the user left it until Sonos
+        // confirms the target. Older in-flight events must not pull it back.
         this._pendingValue = value;
         this._clearPendingTimer();
         this._pendingTimer = window.setTimeout(() => {
