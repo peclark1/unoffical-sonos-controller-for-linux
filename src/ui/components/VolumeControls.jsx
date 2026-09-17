@@ -141,17 +141,11 @@ class VolumeControls extends Component {
     }
 
     _dragStart() {
-        if (this._dragEndTimer) {
-            window.clearTimeout(this._dragEndTimer);
-        }
-
         this.props.setDragging(true);
     }
 
     _dragEnd() {
-        this._dragEndTimer = window.setTimeout(() => {
-            this.props.setDragging(false);
-        }, 500);
+        this.props.setDragging(false);
     }
 
     _hideTimeStart() {
@@ -189,7 +183,6 @@ class VolumeControls extends Component {
 
                 const startVolume = () => {
                     this._dragStart();
-                    this.props.setDragging(true);
                 };
 
                 const endVolume = () => {
