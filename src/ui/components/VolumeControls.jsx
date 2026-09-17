@@ -10,7 +10,6 @@ const {
     setGroupVolume,
     setPlayerMuted,
     setPlayerVolume,
-    snapshotCurrentGroupVolume,
 } = window.VolumeControlActions;
 
 const { show } = window.EqActions;
@@ -33,7 +32,6 @@ const mapStateToProps = (state) => {
 const mapDispatchToProps = {
     setPlayerVolume,
     setGroupVolume,
-    snapshotCurrentGroupVolume,
     setPlayerMuted,
     setDragging,
     setExpanded,
@@ -127,11 +125,6 @@ class VolumeControls extends Component {
         this._captureGroupVolumeSnapshot();
         this._dragStart();
         this.props.setExpanded(keys.length > 1);
-
-        if (keys.length > 1) {
-            const host = this.props.currentHost || keys[0];
-            this.props.snapshotCurrentGroupVolume(host);
-        }
     }
 
     _endGroupVolume() {
