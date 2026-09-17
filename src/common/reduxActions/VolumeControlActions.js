@@ -55,15 +55,16 @@ function queuePlayerVolume(host, volume) {
     drainPlayerVolume(host, state);
 }
 
-function snapshotGroupVolume(host) {
+function createGroupVolumeState(host) {
     const sonos = SonosService.getDeviceByHost(host);
 
     if (!sonos) {
-        return;
+        return null;
     }
 
     const service = sonos.groupRenderingControlService();
-    const state = {
+
+    return {
         service,
         sending: false,
         pending: null,
@@ -71,8 +72,14 @@ function snapshotGroupVolume(host) {
             console.error(err);
         }),
     };
+}
 
-    groupVolumeStates.set(host, state);
+function snapshotGroupVolume(host) {
+    const state = createGroupVolumeState(host);
+
+    if (state) {
+        groupVolumeStates.set(host, state);
+    }
 }
 
 async function drainGroupVolume(host, state) {
@@ -105,18 +112,12 @@ function queueGroupVolume(host, volume) {
     let state = groupVolumeStates.get(host);
 
     if (!state) {
-        const sonos = SonosService.getDeviceByHost(host);
+        state = createGroupVolumeState(host);
 
-        if (!sonos) {
+        if (!state) {
             return;
         }
 
-        state = {
-            service: sonos.groupRenderingControlService(),
-            sending: false,
-            pending: null,
-            ready: Promise.resolve(),
-        };
         groupVolumeStates.set(host, state);
     }
 
