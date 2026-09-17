@@ -4,8 +4,14 @@ import { connect } from 'react-redux';
 import MuteButton from './MuteButton';
 import ValueSlider from './ValueSlider';
 
-const { setDragging, setExpanded, setPlayerMuted, setPlayerVolume } =
-    window.VolumeControlActions;
+const {
+    setDragging,
+    setExpanded,
+    setGroupVolume,
+    setPlayerMuted,
+    setPlayerVolume,
+    snapshotCurrentGroupVolume,
+} = window.VolumeControlActions;
 
 const { show } = window.EqActions;
 
@@ -16,6 +22,7 @@ const mapStateToProps = (state) => {
     return {
         players: getPlayers(state),
         currentGroupKeys: getCurrentGroupKeys(state),
+        currentHost: state.sonosService.currentHost,
         groupVolume: getGroupVolume(state),
         groupMuted: getGroupMuted(state),
         dragging: state.volume.dragging,
@@ -25,6 +32,8 @@ const mapStateToProps = (state) => {
 
 const mapDispatchToProps = {
     setPlayerVolume,
+    setGroupVolume,
+    snapshotCurrentGroupVolume,
     setPlayerMuted,
     setDragging,
     setExpanded,
@@ -35,6 +44,7 @@ class VolumeControls extends Component {
     constructor(props) {
         super(props);
         this.state = {};
+        this._groupVolumeSnapshot = null;
     }
 
     _toggleGoupMute() {
@@ -45,47 +55,89 @@ class VolumeControls extends Component {
         });
     }
 
-    _changeGroupVolume(volume) {
-        this.props.setExpanded(true);
+    _captureGroupVolumeSnapshot() {
+        const players = this.props.currentGroupKeys.reduce((snapshot, key) => {
+            const player = this.props.players[key];
 
-        // adjust all players in group
-        const volumeLevel = volume;
-        const groupVolume = this.props.groupVolume;
+            if (player) {
+                snapshot[key] = Number(player.volume);
+            }
+
+            return snapshot;
+        }, {});
+
+        this._groupVolumeSnapshot = {
+            groupVolume: Number(this.props.groupVolume),
+            players,
+        };
+    }
+
+    _getGroupVolumeUpdates(volumeLevel) {
+        const snapshot = this._groupVolumeSnapshot || {
+            groupVolume: Number(this.props.groupVolume),
+            players: this.props.currentGroupKeys.reduce((players, key) => {
+                players[key] = Number(this.props.players[key].volume);
+                return players;
+            }, {}),
+        };
+
+        const groupVolume = snapshot.groupVolume;
         const deltaVolume = volumeLevel - groupVolume;
 
-        for (const key of this.props.currentGroupKeys) {
+        return this.props.currentGroupKeys.reduce((volumes, key) => {
+            const playerVolume = Number(snapshot.players[key] || 0);
             let newVolume;
 
             if (volumeLevel < 1) {
                 newVolume = 0;
+            } else if (groupVolume <= 0) {
+                newVolume = volumeLevel;
             } else if (deltaVolume > 0) {
-                newVolume = this.props.players[key].volume + deltaVolume;
+                newVolume = playerVolume + deltaVolume;
             } else {
-                const factor = this.props.players[key].volume / groupVolume;
+                const factor = playerVolume / groupVolume;
                 newVolume = Math.ceil(factor * volumeLevel);
             }
 
-            if (newVolume > 99) {
-                newVolume = 99;
-            }
+            volumes[key] = Math.max(0, Math.min(99, newVolume));
+            return volumes;
+        }, {});
+    }
 
-            if (newVolume <= 0) {
-                newVolume = 0;
-            }
+    _changeGroupVolume(volume) {
+        const volumeLevel = Math.max(0, Math.min(99, Number(volume)));
+        const keys = this.props.currentGroupKeys;
 
-            this.props.setPlayerVolume(key, newVolume);
+        if (keys.length === 1) {
+            this.props.setPlayerVolume(keys[0], volumeLevel);
+            return;
         }
+
+        if (!keys.length) {
+            return;
+        }
+
+        const host = this.props.currentHost || keys[0];
+        const volumes = this._getGroupVolumeUpdates(volumeLevel);
+        this.props.setGroupVolume(host, volumeLevel, volumes);
     }
 
     _startGroupVolume() {
         const keys = this.props.currentGroupKeys;
+        this._captureGroupVolumeSnapshot();
         this._dragStart();
         this.props.setExpanded(keys.length > 1);
+
+        if (keys.length > 1) {
+            const host = this.props.currentHost || keys[0];
+            this.props.snapshotCurrentGroupVolume(host);
+        }
     }
 
     _endGroupVolume() {
         this._dragEnd();
         this._hideTimeStart();
+        this._groupVolumeSnapshot = null;
     }
 
     _dragStart() {
@@ -145,7 +197,7 @@ class VolumeControls extends Component {
                 };
 
                 const changeVolume = (volume) => {
-                    if (!this.propsexpanded) {
+                    if (!this.props.expanded) {
                         this.props.setExpanded(true);
                     }
                     this.props.setPlayerVolume(key, volume);

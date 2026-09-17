@@ -22,6 +22,16 @@ export default handleActions(
             };
         },
 
+        [Constants.VOLUME_CONTROLS_GROUP_VOLUME_SET]: (state, action) => {
+            return {
+                ...state,
+                volume: {
+                    ...state.volume,
+                    ...action.payload.volumes,
+                },
+            };
+        },
+
         [Constants.VOLUME_CONTROLS_MUTE_SET]: (state, action) => {
             const { host, muted } = action.payload;
 

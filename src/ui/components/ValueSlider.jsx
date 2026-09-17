@@ -2,9 +2,38 @@ import throttle from 'lodash/throttle';
 import React, { Component } from 'react';
 
 class VolumeSlider extends Component {
-    constructor() {
-        super();
+    constructor(props) {
+        super(props);
         this.state = { dragging: false };
+
+        this._onStart = this._onStart.bind(this);
+        this._onStop = this._onStop.bind(this);
+        this._onInput = this._onInput.bind(this);
+        this._onWheel = this._onWheel.bind(this);
+
+        this._setValueThrottled = throttle(
+            (value) => this._setValue(value),
+            100,
+            {
+                leading: true,
+                trailing: true,
+            },
+        );
+        this._onWheelThrottled = throttle(
+            (direction) => {
+                this._setValue(this._getValue() + direction);
+            },
+            100,
+            {
+                leading: true,
+                trailing: true,
+            },
+        );
+    }
+
+    componentWillUnmount() {
+        this._setValueThrottled.cancel();
+        this._onWheelThrottled.cancel();
     }
 
     _onStart(e) {
@@ -19,6 +48,8 @@ class VolumeSlider extends Component {
     }
 
     _onStop() {
+        this._setValueThrottled.flush();
+
         this.setState({
             dragging: false,
             value: null,
@@ -29,23 +60,25 @@ class VolumeSlider extends Component {
         }
     }
 
-    _onChange(e) {
-        const value = e.target.value;
+    _onInput(e) {
+        const value = Number(e.target.value);
 
         this.setState({
             dragging: true,
-            value: Number(e.target.value),
+            value,
         });
 
-        this._setValue(value);
+        this._setValueThrottled(value);
     }
 
     _setValue(value) {
-        this.props.dragHandler(value);
+        if (this.props.dragHandler) {
+            this.props.dragHandler(value);
+        }
     }
 
     _onWheel(e) {
-        this._setValue(this._getValue() + (e.deltaY > 0 ? -1 : 1));
+        this._onWheelThrottled(e.deltaY > 0 ? -1 : 1);
     }
 
     _getValue() {
@@ -65,10 +98,10 @@ class VolumeSlider extends Component {
                     max="100"
                     value={Number(value)}
                     onChange={() => {}}
-                    onMouseDown={this._onStart.bind(this)}
-                    onMouseUp={this._onStop.bind(this)}
-                    onInput={throttle(this._onChange.bind(this), 100)}
-                    onWheel={throttle(this._onWheel.bind(this), 100)}
+                    onMouseDown={this._onStart}
+                    onMouseUp={this._onStop}
+                    onInput={this._onInput}
+                    onWheel={this._onWheel}
                 />
             </div>
         );
