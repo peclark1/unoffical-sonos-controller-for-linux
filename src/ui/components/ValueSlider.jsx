@@ -73,9 +73,21 @@ class VolumeSlider extends Component {
         this._clearPendingTimer();
     }
 
-    _onStart() {
+    _onStart(e) {
         this._clearPendingValue();
         this._dragging = true;
+
+        // A fast drag can move the pointer off the narrow range input before
+        // the button is released. Capture the pointer so pointerup still comes
+        // back to this slider and the final Sonos volume is always submitted.
+        if (e.currentTarget.setPointerCapture) {
+            try {
+                e.currentTarget.setPointerCapture(e.pointerId);
+            } catch (err) {
+                // Pointer capture is only a robustness aid; native range
+                // dragging still works if the browser rejects the capture.
+            }
+        }
 
         if (this.props.startHandler) {
             this.props.startHandler();
@@ -84,6 +96,18 @@ class VolumeSlider extends Component {
 
     _onStop(e) {
         const value = Number(e.currentTarget.value);
+
+        if (
+            e.currentTarget.releasePointerCapture &&
+            e.currentTarget.hasPointerCapture &&
+            e.currentTarget.hasPointerCapture(e.pointerId)
+        ) {
+            try {
+                e.currentTarget.releasePointerCapture(e.pointerId);
+            } catch (err) {
+                // Ignore a race where the browser already released capture.
+            }
+        }
 
         // Keep the released thumb exactly where the user left it until Sonos
         // confirms the target. Older in-flight events must not pull it back.
@@ -101,7 +125,7 @@ class VolumeSlider extends Component {
 
         // Do not send intermediate network commands while dragging. Send only
         // the final released value so there is no Sonos command backlog to
-        // drain after mouse-up.
+        // drain after pointer-up.
         this._setValue(value);
 
         if (this.props.stopHandler) {
@@ -149,8 +173,9 @@ class VolumeSlider extends Component {
                     min="0"
                     max="100"
                     defaultValue={Number(this.props.value)}
-                    onMouseDown={this._onStart}
-                    onMouseUp={this._onStop}
+                    onPointerDown={this._onStart}
+                    onPointerUp={this._onStop}
+                    onPointerCancel={this._onStop}
                     onInput={this._onInput}
                     onWheel={this._onWheel}
                 />
